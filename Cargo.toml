@@ -1,0 +1,30 @@
+[package]
+name = "wordlrs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "wrd"
+
+[dependencies]
+serde = "*"
+ron = "*"
+rand = {version = "*"}
+bevy_asset_ron = "0.3"
+anyhow = "1.0"
+
+[dependencies.bevy]
+version = "0.6"
+default_features = true
+
+[dependencies.bevy_egui]
+branch = "main"
+git = "https://github.com/mvlabat/bevy_egui"
+
+[patch.crates-io]
+bevy = { git = 'https://github.com/bevyengine/bevy', branch = "main" }
+
+[build-dependencies]
+serde = "*"
+ron = "*"
