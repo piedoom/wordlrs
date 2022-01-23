@@ -42,19 +42,21 @@ pub enum GameState {
     Load,
     Main,
     Menu,
+    Win,
+    Loss,
 }
 
 #[derive(Debug)]
 pub struct CurrentSettingsResource {
-    pub max_size: usize,
-    pub length: usize,
+    pub word_length: usize,
+    pub guesses: usize,
 }
 
 impl Default for CurrentSettingsResource {
     fn default() -> Self {
         Self {
-            length: 5,
-            max_size: 5,
+            guesses: 5,
+            word_length: 5,
         }
     }
 }
@@ -154,6 +156,10 @@ impl Guess {
     pub fn get(&self) -> &[(char, GuessState)] {
         &self.0
     }
+
+    pub fn correct(&self) -> bool {
+        !self.0.iter().any(|(_, s)| s != &GuessState::Correct)
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -196,9 +202,11 @@ impl Deref for CurrentWordResource {
     }
 }
 
-fn game_setup_system(mut events: EventWriter<GameEvent>) {
-    // Reset input resource
-    events.send(GameEvent::RandomizeWord);
+fn game_setup_system(mut events: EventWriter<GameEvent>, word: Option<Res<CurrentWordResource>>) {
+    // Reset input resource if no word exists
+    if word.is_none() {
+        events.send(GameEvent::RandomizeWord);
+    }
 }
 
 fn capture_input_system(
@@ -236,6 +244,7 @@ pub enum GameEvent {
 
 #[allow(clippy::too_many_arguments)]
 fn process_game_events_system(
+    mut state: ResMut<State<GameState>>,
     mut events: ResMut<Events<GameEvent>>,
     mut history: ResMut<HistoryResource>,
     mut current_input: ResMut<CurrentInputResource>,
@@ -304,6 +313,20 @@ fn process_game_events_system(
                     history.guess(Guess(guess));
                     // reset current input
                     current_input.reset();
+
+                    // check for win/loss state
+                    let guesses = history.get_guesses();
+                    if let Some(guess) = guesses.last() {
+                        // check if correct
+                        if guess.correct() {
+                            state.push(GameState::Win).ok();
+                        } else {
+                            // check if loss
+                            if guesses.len() >= current_settings.guesses {
+                                state.push(GameState::Loss).ok();
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -336,7 +359,7 @@ fn process_game_events_system(
                 .words
                 .iter()
                 // TODO: customize size
-                .filter(|a| a.chars().count() == current_settings.max_size)
+                .filter(|a| a.chars().count() == current_settings.word_length)
                 .choose(&mut rand::thread_rng())
                 .unwrap()
                 .clone();

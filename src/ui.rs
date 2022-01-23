@@ -11,7 +11,7 @@ use bevy_egui::{
     egui::{
         self,
         epaint::{RectShape, TextStyle},
-        Color32, ComboBox, Sense, Widget,
+        Color32, ComboBox, Sense, Widget, TextBuffer,
     },
     EguiContext,
 };
@@ -21,7 +21,9 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.add_system_set(SystemSet::on_update(GameState::Main).with_system(main_ui_system))
-            .add_system_set(SystemSet::on_update(GameState::Menu).with_system(menu_ui_system));
+            .add_system_set(SystemSet::on_update(GameState::Menu).with_system(menu_ui_system))
+            .add_system_set(SystemSet::on_update(GameState::Win).with_system(win_ui_system))
+            .add_system_set(SystemSet::on_update(GameState::Loss).with_system(loss_ui_system));
     }
 }
 
@@ -126,7 +128,7 @@ pub fn menu_ui_system(
 
                 ui.horizontal(|ui| {
                     ui.add(
-                        egui::DragValue::new(&mut current_settings.max_size)
+                        egui::DragValue::new(&mut current_settings.word_length)
                             .speed(0.2)
                             .clamp_range(0.0..=16f32)
                             .fixed_decimals(0)
@@ -134,7 +136,7 @@ pub fn menu_ui_system(
                             .suffix(" characters"),
                     );
                     ui.add(
-                        egui::DragValue::new(&mut current_settings.length)
+                        egui::DragValue::new(&mut current_settings.guesses)
                             .speed(0.2)
                             .clamp_range(0.0..=12f32)
                             .fixed_decimals(0)
@@ -149,6 +151,36 @@ pub fn menu_ui_system(
                     state.replace(GameState::Main).ok();
                 }
             });
+        });
+}
+
+fn win_ui_system(ctx: ResMut<EguiContext>, word: Res<CurrentWordResource>, mut events: EventWriter<GameEvent>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>){
+    egui::containers::Window::new("Win")
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx.ctx(), |ui| {
+            ui.label("Win");
+            ui.label(format!("The word was: {}", word.0));
+            if ui.button("New game").clicked() {
+                events.send(GameEvent::RandomizeWord);
+                history.clear();
+                state.replace(GameState::Main).ok();
+            }
+        });
+}
+fn loss_ui_system(ctx: ResMut<EguiContext>, word: Res<CurrentWordResource>, mut events: EventWriter<GameEvent>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>){
+    egui::containers::Window::new("Loss")
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .show(ctx.ctx(), |ui| {
+            ui.label("Loss");
+            if ui.button("Retry").clicked() {
+                history.clear();
+                state.replace(GameState::Main).ok();
+            }
+            if ui.button("New game").clicked() {
+                events.send(GameEvent::RandomizeWord);
+                history.clear();
+                state.replace(GameState::Main).ok();
+            }
         });
 }
 
