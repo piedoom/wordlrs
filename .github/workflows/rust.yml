@@ -38,7 +38,7 @@ jobs:
       - name: Make public
         run: |
           rm -rf public
-          mkdir -p public
+          mkdir -p public/target
           cp ./index.html public
           cp ./target/wordlrs.js public/target/wordlrs.js
           cp -R assets public
