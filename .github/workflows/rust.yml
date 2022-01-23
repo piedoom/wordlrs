@@ -40,7 +40,7 @@ jobs:
           rm -rf public
           mkdir -p public
           cp ./index.html public
-          cp target/wordlrs.js public/target/wordlrs.js
+          cp ./target/wordlrs.js public/target/wordlrs.js
           cp -R assets public
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@3.7.1
