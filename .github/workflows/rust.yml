@@ -35,10 +35,12 @@ jobs:
         run: |
           rm -rf dist
           mkdir -p dist
-      - name: Bind wasm
+      - name: Get bind wasm
         uses: jetli/wasm-bindgen-action@v0.1.0
         with:
           version: 'latest'
+      - name: Bind wasm
+        run: wasm-bindgen --out-dir dist --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
       - name: Make public
         run: |
           cp ./index.html dist
