@@ -37,9 +37,7 @@ jobs:
           command: install
           args: -f wasm-bindgen-cli
       - name: Bind wasm
-        run: |
-          wasm-bindgen --out-dir target 
-          --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
+        run: wasm-bindgen --out-dir target --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
       - name: Make public
         run: |
           rm -rf public
