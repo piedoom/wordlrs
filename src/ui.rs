@@ -11,7 +11,7 @@ use bevy_egui::{
     egui::{
         self,
         epaint::{RectShape, TextStyle},
-        Color32, ComboBox, Label, Sense, Shape, Widget, Id,
+        Color32, ComboBox, Sense, Widget,
     },
     EguiContext,
 };
@@ -25,10 +25,10 @@ impl Plugin for UiPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn main_ui_system(
     mut state: ResMut<State<GameState>>,
     mut keyboard_events: EventWriter<ReceivedCharacter>,
-    mut keyboard_input: ResMut<Input<KeyCode>>,
     windows: Res<Windows>,
     ctx: ResMut<EguiContext>,
     current: Res<CurrentInputResource>,

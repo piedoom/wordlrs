@@ -32,11 +32,11 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --target wasm32-unknown-unknown --no-default-features
+          args: --release --no-default-features --target wasm32-unknown-unknown
       - name: Bind wasm
         uses: jetli/wasm-bindgen-action@v0.1.0
         with:
-          args: --out-dir target --target web target\wasm32-unknown-unknown\release\wordlrs.wasm
+          args: --out-dir target --target web assets/wordlrs.wasm
       - name: Deploy 🚀
         uses: peaceiris/actions-gh-pages@v3
         with:

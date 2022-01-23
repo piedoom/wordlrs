@@ -3,15 +3,7 @@ pub mod ui;
 
 use std::ops::Deref;
 
-use bevy::{
-    app::Events,
-    asset::{BoxedFuture, LoadContext, LoadState, LoadedAsset},
-    input::keyboard::KeyboardInput,
-    prelude::*,
-    reflect::TypeUuid,
-    ui::UiPlugin,
-    utils::HashMap,
-};
+use bevy::{app::Events, prelude::*, utils::HashMap};
 use bevy_egui::egui::Color32;
 use prelude::{
     assets::{AssetPlugin, DictionaryAsset, KeyboardLayoutAsset},

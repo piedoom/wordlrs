@@ -16,7 +16,7 @@ anyhow = "1.0"
 
 [dependencies.bevy]
 version = "0.6"
-default_features = true
+default_features = false
 
 [dependencies.bevy_egui]
 branch = "main"
