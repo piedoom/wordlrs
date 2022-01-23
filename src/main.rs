@@ -8,8 +8,8 @@ fn main() {
     app.insert_resource(WindowDescriptor {
         cursor_visible: true,
         cursor_locked: false,
-        width: 1920f32,
-        height: 1080f32,
+        width: 720f32,
+        height: 720f32,
         ..Default::default()
     })
     .insert_resource(Msaa { samples: 4 })

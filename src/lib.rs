@@ -203,20 +203,29 @@ fn game_setup_system(mut events: EventWriter<GameEvent>) {
 
 fn capture_input_system(
     mut keyboard_events: EventReader<ReceivedCharacter>,
+    #[cfg(target_arch = "wasm32")] keyboard_input: Res<Input<KeyCode>>,
     mut current: ResMut<CurrentInputResource>,
     mut events: EventWriter<GameEvent>,
     word: Res<CurrentWordResource>,
 ) {
     for event in keyboard_events.iter() {
+        println!("{}", event.char);
         // add typed letters
         if event.char.is_alphabetic() {
             current.push(event.char, word.chars().count());
         } else if event.char == '\u{8}' {
             current.backspace()
-        } else if event.char == '\r' {
+        } else if event.char == '\r' || event.char == '\n' {
             events.send(GameEvent::Guess(current.to_string()));
         }
     }
+    // backspace and enter don't work with chars on web
+    #[cfg(target_arch = "wasm32")]
+    keyboard_input.get_just_pressed().for_each(|k| match k {
+        KeyCode::Back => current.backspace(),
+        KeyCode::Return => events.send(GameEvent::Guess(current.to_string())),
+        _ => (),
+    })
 }
 
 pub enum GameEvent {
@@ -242,9 +251,15 @@ fn process_game_events_system(
         GameEvent::Guess(guess) => {
             // build a guess and add it to the history (if valid)
             // Proceed if guess is correct length
+            dbg!(current_word.chars().count());
             if guess.chars().count() == current_word.chars().count() {
                 // proceed if guess is in dictionary
-                if dictionaries.iter().next().unwrap().1.words.contains(&guess) {
+                if dictionaries
+                    .get(current_dictionary.0.clone())
+                    .unwrap()
+                    .words
+                    .contains(&guess)
+                {
                     // Clone the word and use it as a way to keep track of letters
                     let mut letters: Vec<char> = current_word.clone().chars().collect();
 
