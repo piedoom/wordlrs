@@ -13,6 +13,7 @@ ron = "*"
 rand = {version = "*"}
 bevy_asset_ron = "0.3"
 anyhow = "1.0"
+console_error_panic_hook = "0.1"
 
 [dependencies.bevy]
 version = "0.6"

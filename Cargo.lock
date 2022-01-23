@@ -2279,6 +2279,7 @@ dependencies = [
  "bevy",
  "bevy_asset_ron",
  "bevy_egui",
+ "console_error_panic_hook",
  "rand",
  "ron",
  "serde",
