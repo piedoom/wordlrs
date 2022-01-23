@@ -31,10 +31,15 @@ jobs:
         with:
           command: build
           args: --release --no-default-features --target wasm32-unknown-unknown
-      - name: Bind wasm
-        uses: jetli/wasm-bindgen-action@v0.1.0
+      - name: Install wasm-bindgen
+        uses: actions-rs/cargo@v1
         with:
-          args: --out-dir target --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
+          command: install
+          args: -f wasm-bindgen-cli
+      - name: Bind wasm
+        run: |
+          wasm-bindgen --out-dir target 
+          --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
       - name: Make public
         run: |
           rm -rf public
