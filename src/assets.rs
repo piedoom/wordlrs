@@ -1,93 +1,121 @@
 use crate::prelude::*;
 use bevy::{asset::*, prelude::*, reflect::TypeUuid};
-use rand::{prelude::IteratorRandom, seq::SliceRandom, thread_rng};
+use bevy_asset_ron::RonAssetPlugin;
+use rand::{seq::SliceRandom, thread_rng};
+
+pub mod paths {
+    pub const KEYBOARDS: &[&str] = &["qwerty", "ЙЦУКЕН"];
+    pub const DICTIONARIES: &[&str] = &["english", "русский"];
+}
 
 pub struct AssetPlugin;
 
 impl Plugin for AssetPlugin {
     fn build(&self, app: &mut App) {
-        app.add_asset::<WordListAsset>()
-            .init_asset_loader::<WordListAssetLoader>()
-            .init_resource::<LoadTracker>()
+        app.init_resource::<LoadTracker>()
+            .add_asset::<DictionaryAsset>()
+            .add_asset::<KeyboardLayoutAsset>()
+            .add_plugin(RonAssetPlugin::<DictionaryAsset>::new(&["dict"]))
+            .add_plugin(RonAssetPlugin::<KeyboardLayoutAsset>::new(&["keyboard"]))
             .add_system_set(SystemSet::on_enter(GameState::Load).with_system(load_assets_system))
             .add_system_set(SystemSet::on_update(GameState::Load).with_system(check_loaded_system));
     }
 }
 
 #[derive(Default)]
-pub struct LoadTracker(Vec<HandleUntyped>);
+pub struct LoadTracker {
+    pub stage: usize,
+    pub handles: Vec<HandleUntyped>,
+}
 
 impl LoadTracker {
     pub fn finished(&self, assets: &AssetServer) -> bool {
-        self.0
+        self.handles
             .iter()
             .find(|x| assets.get_load_state(*x) == LoadState::Loading)
             .eq(&None)
     }
 
     pub fn load(&mut self, path: &str, assets: &AssetServer) {
-        self.0.push(assets.load_untyped(path));
+        self.handles.push(assets.load_untyped(path));
     }
 }
 
 #[derive(serde::Deserialize, serde::Serialize, TypeUuid, PartialEq, Default, Debug, Clone, Eq)]
 #[uuid = "fccfcc12-3456-4fa8-adc4-78c5822269f8"]
-pub struct WordListAsset(pub Vec<String>);
-
-impl From<&[u8]> for WordListAsset {
-    fn from(bytes: &[u8]) -> Self {
-        let string = std::str::from_utf8(bytes).unwrap();
-        Self(
-            string
-                .split_whitespace()
-                .into_iter()
-                .map(|x| x.to_string())
-                .collect(),
-        )
-    }
+pub struct DictionaryAsset {
+    pub name: String,
+    pub language: String,
+    pub keyboards: Vec<String>,
+    pub words: Vec<String>,
 }
 
-impl WordListAsset {
+impl DictionaryAsset {
     pub fn contains(&self, pat: &str) -> bool {
-        self.0.contains(&pat.to_string())
+        self.words.contains(&pat.to_string())
     }
     pub fn random(&mut self) -> &String {
-        self.0.shuffle(&mut thread_rng());
-        self.0.first().unwrap()
-    }
-}
-
-#[derive(Default)]
-pub struct WordListAssetLoader;
-
-impl AssetLoader for WordListAssetLoader {
-    fn load<'a>(
-        &'a self,
-        bytes: &'a [u8],
-        load_context: &'a mut LoadContext,
-    ) -> BoxedFuture<'a, Result<(), anyhow::Error>> {
-        Box::pin(async move {
-            let asset = WordListAsset::from(bytes);
-            load_context.set_default_asset(LoadedAsset::new(asset));
-            Ok(())
-        })
-    }
-
-    fn extensions(&self) -> &[&str] {
-        &["dict"]
+        self.words.shuffle(&mut thread_rng());
+        self.words.first().unwrap()
     }
 }
 
 fn load_assets_system(mut load_tracker: ResMut<LoadTracker>, assets: Res<AssetServer>) {
-    load_tracker.load("words.dict", &assets);
+    paths::KEYBOARDS
+        .iter()
+        .map(|path| format!("keyboards/{path}.keyboard"))
+        .chain(
+            paths::DICTIONARIES
+                .iter()
+                .map(|path| format!("dictionaries/{path}.dict")),
+        )
+        .for_each(|path| {
+            load_tracker.load(&path, &assets);
+        });
 }
 
 fn check_loaded_system(
     mut state: ResMut<State<GameState>>,
-    load_tracker: Res<LoadTracker>,
+    mut load_tracker: ResMut<LoadTracker>,
+    mut current_word_list: ResMut<CurrentDictionaryResource>,
+    mut events: EventWriter<GameEvent>,
+    word_list_assets: Res<Assets<DictionaryAsset>>,
     assets: Res<AssetServer>,
 ) {
     if load_tracker.finished(&assets) {
-        state.replace(GameState::Main).ok();
+        match load_tracker.stage {
+            0 => {
+                load_tracker.stage = 1;
+            }
+            1 => {
+                // Set some defaults for now
+                current_word_list.0 = word_list_assets.get_handle(
+                    word_list_assets
+                        .iter()
+                        .find(|x| x.1.language == "english-us")
+                        .map(|x| x.0)
+                        .unwrap(),
+                );
+                load_tracker.stage = 2;
+            }
+            2 => {
+                events.send(GameEvent::ChangeDictionary(current_word_list.0.clone()));
+                load_tracker.stage = 3;
+            }
+            3 => {
+                load_tracker.stage = 4;
+            }
+            4 => {
+                state.replace(GameState::Main).ok();
+            }
+            _ => unreachable!(),
+        }
     }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, TypeUuid, PartialEq, Default, Debug, Clone, Eq)]
+#[uuid = "fccfcc12-4252-4fa8-adc4-78c5822269f8"]
+pub struct KeyboardLayoutAsset {
+    pub name: String,
+    pub layout: Vec<Vec<char>>,
 }
