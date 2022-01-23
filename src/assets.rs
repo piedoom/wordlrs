@@ -63,11 +63,11 @@ impl DictionaryAsset {
 fn load_assets_system(mut load_tracker: ResMut<LoadTracker>, assets: Res<AssetServer>) {
     paths::KEYBOARDS
         .iter()
-        .map(|path| format!("keyboards/{path}.keyboard"))
+        .map(|path| format!("./keyboards/{path}.keyboard"))
         .chain(
             paths::DICTIONARIES
                 .iter()
-                .map(|path| format!("dictionaries/{path}.dict")),
+                .map(|path| format!("./dictionaries/{path}.dict")),
         )
         .for_each(|path| {
             load_tracker.load(&path, &assets);
