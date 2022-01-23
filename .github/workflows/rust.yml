@@ -42,7 +42,6 @@ jobs:
       - name: Make public
         run: |
           cp ./index.html dist
-          cp ./wordlrs.js dist/wordlrs.js
           cp -R assets dist
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@3.7.1
