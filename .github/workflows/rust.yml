@@ -8,19 +8,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  web:
+    name: Web
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/cache@v2
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ~/.cargo
             target/
-          key: ubuntu-latest-cargo-build-wasm-stable-${{ hashFiles('**/Cargo.toml') }}
+          key: wasm32-unknown-unknown-stable
+          restore-keys: |
+            wasm32-unknown-unknown-stable
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -34,10 +34,18 @@ jobs:
       - name: Bind wasm
         uses: jetli/wasm-bindgen-action@v0.1.0
         with:
-          args: --out-dir target --target web assets/wordlrs.wasm
-      - name: Deploy 🚀
-        uses: peaceiris/actions-gh-pages@v3
+          args: --out-dir target --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
+      - name: Make public
+        run: |
+          rm -rf public
+          mkdir -p public
+          cp ./index.html public
+          cp target/wordlrs.js public/target/wordlrs.js
+          cp -R assets public
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@3.7.1
         with:
-          github_token: ${{ secrets.TOKEN }}
-          force_orphan: true
-          keep_files: true
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          BRANCH: gh-pages # The branch the action should deploy to.
+          FOLDER: public # The folder the action should deploy.
+          CLEAN: true # Automatically remove deleted files from the deploy branch
