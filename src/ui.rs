@@ -136,7 +136,7 @@ pub fn menu_ui_system(
                             .suffix(" characters"),
                     );
                     ui.add(
-                        egui::DragValue::new(&mut current_settings.guesses)
+                        egui::DragValue::new(&mut current_settings.max_attempts)
                             .speed(0.2)
                             .clamp_range(0.0..=12f32)
                             .fixed_decimals(0)
@@ -154,12 +154,14 @@ pub fn menu_ui_system(
         });
 }
 
-fn win_ui_system(ctx: ResMut<EguiContext>, word: Res<CurrentWordResource>, mut events: EventWriter<GameEvent>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>){
+fn win_ui_system(ctx: ResMut<EguiContext>, word: Res<CurrentWordResource>, mut events: EventWriter<GameEvent>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>, settings: Res<CurrentSettingsResource>){
     egui::containers::Window::new("Win")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx.ctx(), |ui| {
             ui.label("Win");
             ui.label(format!("The word was: {}", word.0));
+            ui.label(history.share_string(&word, &settings));
+            
             if ui.button("New game").clicked() {
                 events.send(GameEvent::RandomizeWord);
                 history.clear();

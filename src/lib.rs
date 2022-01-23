@@ -1,7 +1,11 @@
 pub mod assets;
 pub mod ui;
 
-use std::ops::Deref;
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    ops::Deref,
+};
 
 use bevy::{app::Events, prelude::*, utils::HashMap};
 use bevy_egui::egui::Color32;
@@ -49,13 +53,13 @@ pub enum GameState {
 #[derive(Debug)]
 pub struct CurrentSettingsResource {
     pub word_length: usize,
-    pub guesses: usize,
+    pub max_attempts: usize,
 }
 
 impl Default for CurrentSettingsResource {
     fn default() -> Self {
         Self {
-            guesses: 5,
+            max_attempts: 5,
             word_length: 5,
         }
     }
@@ -95,6 +99,29 @@ pub struct HistoryResource {
 }
 
 impl HistoryResource {
+    pub fn share_string(&self, word: &str, settings: &CurrentSettingsResource) -> String {
+        // Hash the word so it isn't given away since we don't have an ID
+        let mut hasher = DefaultHasher::new();
+        word.hash(&mut hasher);
+        let hash = hasher.finish();
+
+        // get number of attempts
+        let attempt = self.guesses.len();
+        let max_attempts = settings.max_attempts;
+
+        let blocks = self.guesses.iter().fold(String::default(), |acc, x| {
+            acc + &x.0.iter().fold(String::default(), |acc, (_, state)| {
+                acc + match state {
+                    GuessState::None | GuessState::Missing => "⬜",
+                    GuessState::Misplaced => "🟨",
+                    GuessState::Correct => "🟩",
+                }
+            }) + "\n"
+        });
+
+        format!("wordlrs {hash} {attempt}/{max_attempts}\n{blocks}")
+    }
+
     pub fn clear(&mut self) {
         self.guesses = Default::default();
         self.guessed_char = Default::default();
@@ -322,7 +349,7 @@ fn process_game_events_system(
                             state.push(GameState::Win).ok();
                         } else {
                             // check if loss
-                            if guesses.len() >= current_settings.guesses {
+                            if guesses.len() >= current_settings.max_attempts {
                                 state.push(GameState::Loss).ok();
                             }
                         }

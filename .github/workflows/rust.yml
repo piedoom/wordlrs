@@ -40,11 +40,11 @@ jobs:
         with:
           version: 'latest'
       - name: Bind wasm
-        run: wasm-bindgen --out-dir dist --target web target/wasm32-unknown-unknown/release/wordlrs.wasm
+        run: wasm-bindgen --out-dir ./dist --target web ./target/wasm32-unknown-unknown/release/wordlrs.wasm
       - name: Make public
         run: |
-          cp ./index.html dist
-          cp -R assets dist
+          cp ./index.html ./dist/
+          cp -R ./assets ./dist/
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@3.7.1
         with:
