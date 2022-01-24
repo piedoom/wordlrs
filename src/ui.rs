@@ -132,6 +132,9 @@ pub fn menu_ui_system(
     let mut pop_state = false;
     let mut next_state = None;
     if let GameState::Menu{prev_dictionary, prev_word} = state.current() {
+        if menu_settings.selected_dictonary_handle == Handle::<DictionaryAsset>::default() {
+            menu_settings.selected_dictonary_handle = prev_dictionary.clone();
+        }
         egui::containers::Window::new("Menu")
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx.ctx(), |ui| {
