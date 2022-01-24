@@ -1,7 +1,7 @@
 use crate::prelude::*;
 use bevy::{asset::*, prelude::*, reflect::TypeUuid};
 use bevy_asset_ron::RonAssetPlugin;
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{prelude::IteratorRandom, thread_rng};
 
 pub mod paths {
     pub const KEYBOARDS: &[&str] = &["qwerty", "ЙЦУКЕН"];
@@ -30,10 +30,10 @@ pub struct LoadTracker {
 
 impl LoadTracker {
     pub fn finished(&self, assets: &AssetServer) -> bool {
-        self.handles
+        !self
+            .handles
             .iter()
-            .find(|x| assets.get_load_state(*x) == LoadState::Loading)
-            .eq(&None)
+            .any(|x| assets.get_load_state(x) == LoadState::Loading)
     }
 
     pub fn load(&mut self, path: &str, assets: &AssetServer) {
@@ -47,16 +47,18 @@ pub struct DictionaryAsset {
     pub name: String,
     pub language: String,
     pub keyboards: Vec<String>,
-    pub words: Vec<String>,
+    words: Vec<String>,
 }
 
 impl DictionaryAsset {
     pub fn contains(&self, pat: &str) -> bool {
         self.words.contains(&pat.to_string())
     }
-    pub fn random(&mut self) -> &String {
-        self.words.shuffle(&mut thread_rng());
-        self.words.first().unwrap()
+    pub fn random(&self, length: usize) -> Option<&String> {
+        self.words
+            .iter()
+            .filter(|x| x.len() == length)
+            .choose(&mut thread_rng())
     }
 }
 
@@ -76,39 +78,28 @@ fn load_assets_system(mut load_tracker: ResMut<LoadTracker>, assets: Res<AssetSe
 
 fn check_loaded_system(
     mut state: ResMut<State<GameState>>,
-    mut load_tracker: ResMut<LoadTracker>,
-    mut current_word_list: ResMut<CurrentDictionaryResource>,
-    mut events: EventWriter<GameEvent>,
-    word_list_assets: Res<Assets<DictionaryAsset>>,
+    load_tracker: ResMut<LoadTracker>,
     assets: Res<AssetServer>,
+    dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
     if load_tracker.finished(&assets) {
-        match load_tracker.stage {
-            0 => {
-                load_tracker.stage = 1;
-            }
-            1 => {
-                // Set some defaults for now
-                current_word_list.0 = word_list_assets.get_handle(
-                    word_list_assets
-                        .iter()
-                        .find(|x| x.1.language == "english-us")
-                        .map(|x| x.0)
-                        .unwrap(),
-                );
-                load_tracker.stage = 2;
-            }
-            2 => {
-                events.send(GameEvent::ChangeDictionary(current_word_list.0.clone()));
-                load_tracker.stage = 3;
-            }
-            3 => {
-                load_tracker.stage = 4;
-            }
-            4 => {
-                state.replace(GameState::Main).ok();
-            }
-            _ => unreachable!(),
+        // get handle to english dictionary and a random word
+        if let Some((dictionary, word)) =
+            dictionaries
+                .iter()
+                .find_map(|(h, a)| match a.language == "english-us" {
+                    true => Some((dictionaries.get_handle(h), a.random(5))),
+                    false => None,
+                })
+        {
+            // if dictionary is loaded, set the state to main
+            state
+                .replace(GameState::Main {
+                    word: word.unwrap().to_string(),
+                    dictionary,
+                    settings: Default::default(),
+                })
+                .ok();
         }
     }
 }

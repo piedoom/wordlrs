@@ -4,16 +4,14 @@ pub mod ui;
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
-    ops::Deref,
 };
 
-use bevy::{app::Events, prelude::*, utils::HashMap};
+use bevy::{prelude::*, utils::HashMap};
 use bevy_egui::egui::Color32;
 use prelude::{
     assets::{AssetPlugin, DictionaryAsset, KeyboardLayoutAsset},
     ui::colors::*,
 };
-use rand::prelude::IteratorRandom;
 
 pub mod prelude {
     pub use super::*;
@@ -26,37 +24,104 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_state(GameState::Load)
-            .init_resource::<CurrentDictionaryResource>()
             .init_resource::<CurrentInputResource>()
-            .init_resource::<CurrentWordResource>()
             .init_resource::<HistoryResource>()
-            .init_resource::<CurrentLayoutResource>()
-            .init_resource::<CurrentSettingsResource>()
+            .init_resource::<Settings>()
             .add_event::<GameEvent>()
             .add_plugin(AssetPlugin)
             .add_system(process_game_events_system)
-            .add_system_set(SystemSet::on_enter(GameState::Main).with_system(game_setup_system))
-            .add_system_set(SystemSet::on_update(GameState::Main).with_system(capture_input_system))
+            .add_system_set(SystemSet::on_enter(GameState::main()).with_system(game_setup_system))
+            .add_system_set(
+                SystemSet::on_update(GameState::main()).with_system(capture_input_system),
+            )
             .add_plugin(ui::UiPlugin);
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[allow(clippy::derive_hash_xor_eq)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub enum GameState {
     Load,
-    Main,
-    Menu,
-    Win,
-    Loss,
+    Main {
+        settings: Settings,
+        word: String,
+        dictionary: Handle<DictionaryAsset>,
+    },
+    Menu {
+        settings: Settings,
+        word: String,
+        dictionary: Handle<DictionaryAsset>,
+    },
+    Win {
+        settings: Settings,
+        word: String,
+        dictionary: Handle<DictionaryAsset>,
+    },
+    Loss {
+        settings: Settings,
+        word: String,
+        dictionary: Handle<DictionaryAsset>,
+    },
 }
 
-#[derive(Debug)]
-pub struct CurrentSettingsResource {
+impl PartialEq for GameState {
+    /// Set a custom equality method that only compares the enum variant,
+    /// ignoring any attached data.
+    fn eq(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+}
+
+impl GameState {
+    #[inline(always)]
+    pub fn load() -> Self {
+        Self::Load
+    }
+
+    #[inline(always)]
+    pub fn main() -> Self {
+        Self::Main {
+            settings: Default::default(),
+            word: Default::default(),
+            dictionary: Default::default(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn menu() -> Self {
+        Self::Menu {
+            settings: Default::default(),
+            word: Default::default(),
+            dictionary: Default::default(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn win() -> Self {
+        Self::Win {
+            settings: Default::default(),
+            word: Default::default(),
+            dictionary: Default::default(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn loss() -> Self {
+        Self::Loss {
+            settings: Default::default(),
+            word: Default::default(),
+            dictionary: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Settings {
     pub word_length: usize,
     pub max_attempts: usize,
 }
 
-impl Default for CurrentSettingsResource {
+impl Default for Settings {
     fn default() -> Self {
         Self {
             max_attempts: 5,
@@ -90,16 +155,13 @@ impl CurrentInputResource {
 }
 
 #[derive(Default)]
-pub struct CurrentLayoutResource(Handle<KeyboardLayoutAsset>);
-
-#[derive(Default)]
 pub struct HistoryResource {
     guesses: Vec<Guess>,
     guessed_char: HashMap<char, GuessState>,
 }
 
 impl HistoryResource {
-    pub fn share_string(&self, word: &str, settings: &CurrentSettingsResource) -> String {
+    pub fn share_string(&self, word: &str, settings: &Settings) -> String {
         // Hash the word so it isn't given away since we don't have an ID
         let mut hasher = DefaultHasher::new();
         word.hash(&mut hasher);
@@ -215,25 +277,8 @@ impl ToString for CurrentInputResource {
     }
 }
 
-#[derive(Default)]
-pub struct CurrentDictionaryResource(pub Handle<DictionaryAsset>);
-
-#[derive(Default)]
-pub struct CurrentWordResource(pub String);
-
-impl Deref for CurrentWordResource {
-    type Target = String;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-fn game_setup_system(mut events: EventWriter<GameEvent>, word: Option<Res<CurrentWordResource>>) {
-    // Reset input resource if no word exists
-    if word.is_none() {
-        events.send(GameEvent::RandomizeWord);
-    }
+fn game_setup_system() {
+    // nothing to do yet
 }
 
 fn capture_input_system(
@@ -241,162 +286,135 @@ fn capture_input_system(
     #[cfg(target_arch = "wasm32")] keyboard_input: Res<Input<KeyCode>>,
     mut current: ResMut<CurrentInputResource>,
     mut events: EventWriter<GameEvent>,
-    word: Res<CurrentWordResource>,
+    state: Res<State<GameState>>,
 ) {
-    for event in keyboard_events.iter() {
-        println!("{}", event.char);
-        // add typed letters
-        if event.char.is_alphabetic() {
-            current.push(event.char, word.chars().count());
-        } else if event.char == '\u{8}' {
-            current.backspace()
-        } else if event.char == '\r' || event.char == '\n' {
-            events.send(GameEvent::Guess(current.to_string()));
+    if let GameState::Main { word, .. } = state.current() {
+        for event in keyboard_events.iter() {
+            println!("{}", event.char);
+            // add typed letters
+            if event.char.is_alphabetic() {
+                current.push(event.char, word.chars().count());
+            } else if event.char == '\u{8}' {
+                current.backspace()
+            } else if event.char == '\r' || event.char == '\n' {
+                events.send(GameEvent::Guess(current.to_string()));
+            }
         }
+        // backspace and enter don't work with chars on web
+        #[cfg(target_arch = "wasm32")]
+        keyboard_input.get_just_pressed().for_each(|k| match k {
+            KeyCode::Back => current.backspace(),
+            KeyCode::Return => events.send(GameEvent::Guess(current.to_string())),
+            _ => (),
+        })
     }
-    // backspace and enter don't work with chars on web
-    #[cfg(target_arch = "wasm32")]
-    keyboard_input.get_just_pressed().for_each(|k| match k {
-        KeyCode::Back => current.backspace(),
-        KeyCode::Return => events.send(GameEvent::Guess(current.to_string())),
-        _ => (),
-    })
 }
 
 pub enum GameEvent {
     Guess(String),
-    ChangeDictionary(Handle<DictionaryAsset>),
-    RandomizeWord,
 }
 
 #[allow(clippy::too_many_arguments)]
 fn process_game_events_system(
     mut state: ResMut<State<GameState>>,
-    mut events: ResMut<Events<GameEvent>>,
+    mut events: EventReader<GameEvent>,
     mut history: ResMut<HistoryResource>,
     mut current_input: ResMut<CurrentInputResource>,
-    mut current_word: ResMut<CurrentWordResource>,
-    mut current_dictionary: ResMut<CurrentDictionaryResource>,
-    mut current_layout: ResMut<CurrentLayoutResource>,
-    current_settings: Res<CurrentSettingsResource>,
-    layouts: Res<Assets<KeyboardLayoutAsset>>,
+    current_settings: Res<Settings>,
     dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
-    let mut send_events = vec![];
-    events.drain().for_each(|event| match event {
-        GameEvent::Guess(guess) => {
-            // build a guess and add it to the history (if valid)
-            // Proceed if guess is correct length
-            dbg!(current_word.chars().count());
-            if guess.chars().count() == current_word.chars().count() {
-                // proceed if guess is in dictionary
-                if dictionaries
-                    .get(current_dictionary.0.clone())
-                    .unwrap()
-                    .words
-                    .contains(&guess)
-                {
-                    // Clone the word and use it as a way to keep track of letters
-                    let mut letters: Vec<char> = current_word.clone().chars().collect();
+    if let GameState::Main {
+        settings,
+        word,
+        dictionary,
+    } = state.current().clone()
+    {
+        events.iter().for_each(|event| match event {
+            GameEvent::Guess(guess) => {
+                // build a guess and add it to the history (if valid)
+                // Proceed if guess is correct length
+                if guess.chars().count() == word.chars().count() {
+                    // proceed if guess is in dictionary
+                    if dictionaries
+                        .get(dictionary.clone())
+                        .unwrap()
+                        .contains(guess)
+                    {
+                        // Clone the word and use it as a way to keep track of letters
+                        let mut letters: Vec<char> = word.clone().chars().collect();
 
-                    // loop over guess for comparison to find correct ones
-                    let guess: Vec<(char, GuessState)> = guess
-                        .chars()
-                        .zip(current_word.chars())
-                        .enumerate()
-                        .map(|(i, (guess_char, word_char))| {
-                            if guess_char == word_char {
-                                // remove correct characters from checking pool
-                                if let Some(c) = letters.get_mut(i) {
-                                    *c = ' ';
-                                }
-                                (guess_char, GuessState::Correct)
-                            } else {
-                                // not checked at this stage, set to missing first
-                                (guess_char, GuessState::None)
-                            }
-                        })
-                        .collect::<Vec<(char, GuessState)>>()
-                        .iter()
-                        .map(|(c, state)| {
-                            if *state == GuessState::None {
-                                if letters.contains(c) {
-                                    // remove misplaced characters from checking pool
-                                    let pos = letters.iter_mut().position(|x| *x == *c).unwrap();
-                                    if let Some(c) = letters.get_mut(pos) {
-                                        *c = ' '
+                        // loop over guess for comparison to find correct ones
+                        let guess: Vec<(char, GuessState)> = guess
+                            .chars()
+                            .zip(word.chars())
+                            .enumerate()
+                            .map(|(i, (guess_char, word_char))| {
+                                if guess_char == word_char {
+                                    // remove correct characters from checking pool
+                                    if let Some(c) = letters.get_mut(i) {
+                                        *c = ' ';
                                     }
-                                    (*c, GuessState::Misplaced)
+                                    (guess_char, GuessState::Correct)
                                 } else {
-                                    (*c, GuessState::Missing)
+                                    // not checked at this stage, set to missing first
+                                    (guess_char, GuessState::None)
                                 }
+                            })
+                            .collect::<Vec<(char, GuessState)>>()
+                            .iter()
+                            .map(|(c, state)| {
+                                if *state == GuessState::None {
+                                    if letters.contains(c) {
+                                        // remove misplaced characters from checking pool
+                                        let pos =
+                                            letters.iter_mut().position(|x| *x == *c).unwrap();
+                                        if let Some(c) = letters.get_mut(pos) {
+                                            *c = ' '
+                                        }
+                                        (*c, GuessState::Misplaced)
+                                    } else {
+                                        (*c, GuessState::Missing)
+                                    }
+                                } else {
+                                    (*c, *state)
+                                }
+                            })
+                            .collect();
+
+                        // Add guess to history
+                        history.guess(Guess(guess));
+                        // reset current input
+                        current_input.reset();
+
+                        // check for win/loss state
+                        let guesses = history.get_guesses();
+                        if let Some(guess) = guesses.last() {
+                            // check if correct
+                            if guess.correct() {
+                                state
+                                    .push(GameState::Win {
+                                        settings: settings.clone(),
+                                        word: word.clone(),
+                                        dictionary: dictionary.clone(),
+                                    })
+                                    .ok();
                             } else {
-                                (*c, *state)
-                            }
-                        })
-                        .collect();
-
-                    // Add guess to history
-                    history.guess(Guess(guess));
-                    // reset current input
-                    current_input.reset();
-
-                    // check for win/loss state
-                    let guesses = history.get_guesses();
-                    if let Some(guess) = guesses.last() {
-                        // check if correct
-                        if guess.correct() {
-                            state.push(GameState::Win).ok();
-                        } else {
-                            // check if loss
-                            if guesses.len() >= current_settings.max_attempts {
-                                state.push(GameState::Loss).ok();
+                                // check if loss
+                                if guesses.len() >= current_settings.max_attempts {
+                                    state
+                                        .push(GameState::Loss {
+                                            settings: settings.clone(),
+                                            word: word.clone(),
+                                            dictionary: dictionary.clone(),
+                                        })
+                                        .ok();
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        GameEvent::ChangeDictionary(new_dictionary) => {
-            // clear all history (reset the game)
-            history.clear();
-
-            // Change the current dictionary
-            current_dictionary.0 = new_dictionary.clone();
-
-            // get the dict asset
-            let dictionary = dictionaries.get(new_dictionary).unwrap();
-
-            // also change the current keyboard layout to reflect the dictionary capability
-            // TODO: for now just select the first available layout. Should let users choose later.
-            current_layout.0 = layouts.get_handle(
-                layouts
-                    .iter()
-                    .find(|x| &x.1.name == dictionary.keyboards.first().unwrap())
-                    .map(|x| x.0)
-                    .unwrap(),
-            );
-            send_events.push(GameEvent::RandomizeWord);
-        }
-        GameEvent::RandomizeWord => {
-            // get a new word
-            current_word.0 = dictionaries
-                .get(current_dictionary.0.clone())
-                .unwrap()
-                .words
-                .iter()
-                // TODO: customize size
-                .filter(|a| a.chars().count() == current_settings.word_length)
-                .choose(&mut rand::thread_rng())
-                .unwrap()
-                .clone();
-
-            // reset input
-            *current_input = CurrentInputResource::default();
-        }
-    });
-    for event in send_events {
-        events.send(event);
+        });
     }
 }
 

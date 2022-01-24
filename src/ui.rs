@@ -11,7 +11,7 @@ use bevy_egui::{
     egui::{
         self,
         epaint::{RectShape, TextStyle},
-        Color32, ComboBox, Sense, Widget, TextBuffer,
+        Color32, ComboBox, Sense, Widget,
     },
     EguiContext,
 };
@@ -20,10 +20,11 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_system_set(SystemSet::on_update(GameState::Main).with_system(main_ui_system))
-            .add_system_set(SystemSet::on_update(GameState::Menu).with_system(menu_ui_system))
-            .add_system_set(SystemSet::on_update(GameState::Win).with_system(win_ui_system))
-            .add_system_set(SystemSet::on_update(GameState::Loss).with_system(loss_ui_system));
+        app.init_resource::<MenuSettings>()
+            .add_system_set(SystemSet::on_update(GameState::main()).with_system(main_ui_system))
+            .add_system_set(SystemSet::on_update(GameState::menu()).with_system(menu_ui_system))
+            .add_system_set(SystemSet::on_update(GameState::win()).with_system(win_ui_system))
+            .add_system_set(SystemSet::on_update(GameState::loss()).with_system(loss_ui_system));
     }
 }
 
@@ -34,156 +35,172 @@ pub fn main_ui_system(
     windows: Res<Windows>,
     ctx: ResMut<EguiContext>,
     current: Res<CurrentInputResource>,
-    layout: Res<CurrentLayoutResource>,
     layouts: Res<Assets<KeyboardLayoutAsset>>,
     history: Res<HistoryResource>,
-    word: Res<CurrentWordResource>,
+    dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
-    egui::containers::Area::new("info")
-        .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0f32, 32f32))
-        .show(ctx.ctx(), |ui| {
-            ui.spacing_mut().item_spacing = egui::Vec2::new(16f32, 8f32);
-            ui.vertical(|ui| {
-                history.get_guesses().iter().for_each(|guess| {
-                    ui.add(WordLineWidget {
-                        length: guess.0.len(),
-                        size: 48f32,
-                        contents: &guess.0,
+    if let GameState::Main { word, dictionary, settings } = state.current().clone() {
+        egui::containers::Area::new("info")
+            .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0f32, 32f32))
+            .show(ctx.ctx(), |ui| {
+                ui.spacing_mut().item_spacing = egui::Vec2::new(16f32, 8f32);
+                ui.vertical(|ui| {
+                    history.get_guesses().iter().for_each(|guess| {
+                        ui.add(WordLineWidget {
+                            length: guess.0.len(),
+                            size: 48f32,
+                            contents: &guess.0,
+                        });
                     });
-                });
-                ui.add(WordLineWidget {
-                    length: word.chars().count(),
-                    size: 48f32,
-                    contents: &current
-                        .contents()
-                        .iter()
-                        .map(|x| (*x, GuessState::None))
-                        .collect(),
-                });
-            })
-        });
+                    ui.add(WordLineWidget {
+                        length: word.chars().count(),
+                        size: 48f32,
+                        contents: &current
+                            .contents()
+                            .iter()
+                            .map(|x| (*x, GuessState::None))
+                            .collect(),
+                    });
+                })
+            });
 
-    // button to change game settings
-    egui::containers::Area::new("menu")
-        .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
-        .show(ctx.ctx(), |ui| {
-            if ui.button("Settings").clicked() {
-                state.push(GameState::Menu).ok();
-            }
-        });
+        // button to change game settings
+        egui::containers::Area::new("menu")
+            .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
+            .show(ctx.ctx(), |ui| {
+                if ui.button("Settings").clicked() {
+                    state.push(GameState::Menu{ settings, word, dictionary: dictionary.clone() }).ok();
+                }
+            });
 
-    egui::containers::Area::new("keyboard")
-        .anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0f32, -32f32))
-        .show(ctx.ctx(), |ui| {
-            if let Some(layout) = layouts.get(layout.0.clone()) {
+        egui::containers::Area::new("keyboard")
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::Vec2::new(0f32, -32f32))
+            .show(ctx.ctx(), |ui| {
+                    // get correct layout
+                    let layout_name = dictionaries.get(dictionary.clone()).unwrap().keyboards.first().unwrap();
+                    let layout = layouts.iter().find_map(|(handle_id, asset)| {
+                        let handle = layouts.get_handle(handle_id);
+                        if &asset.name == layout_name {Some(layouts.get(handle).unwrap())} else {None}
+                    }).unwrap();
+                    ui.add(KeyboardWidget {
+                        layout: layout
+                            .layout
+                            .iter()
+                            .map(|x| x.as_slice())
+                            .collect::<Vec<&[char]>>()
+                            .as_slice(),
+                        onclick: &mut |char| {
+                            keyboard_events.send(ReceivedCharacter {
+                                id: windows.get_primary().unwrap().id(),
+                                char,
+                            })
+                        },
+                        history: &history,
+                        key_size: egui::Vec2::splat(48f32),
+                        key_spacing: egui::Vec2::splat(8f32),
+                    });
                 
-                ui.add(KeyboardWidget {
-                    layout: layout
-                        .layout
-                        .iter()
-                        .map(|x| x.as_slice())
-                        .collect::<Vec<&[char]>>()
-                        .as_slice(),
-                    onclick: &mut |char| {
-                        keyboard_events.send(ReceivedCharacter {
-                            id: windows.get_primary().unwrap().id(),
-                            char,
-                        })
-                    },
-                    history: &history,
-                    key_size: egui::Vec2::splat(48f32),
-                    key_spacing: egui::Vec2::splat(8f32),
-                });
-            }
-        });
+            });
+    }
 }
+
+pub type MenuSettings = Settings;
 
 #[allow(clippy::too_many_arguments)]
 pub fn menu_ui_system(
-    mut current_dictionary: ResMut<CurrentDictionaryResource>,
-    mut current_settings: ResMut<CurrentSettingsResource>,
+    mut menu_settings: ResMut<MenuSettings>,
     mut state: ResMut<State<GameState>>,
-    mut events: EventWriter<GameEvent>,
-    current_word: Res<CurrentWordResource>,
     ctx: ResMut<EguiContext>,
     dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
-    egui::containers::Window::new("Menu")
-        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-        .show(ctx.ctx(), |ui| {
-            let current_dict_name = &dictionaries.get(current_dictionary.0.clone()).unwrap().name;
-            ui.vertical(|ui| {
-                ui.heading(current_word.0.clone());
-                ComboBox::from_label("Dictionary")
-                    .selected_text(current_dict_name)
-                    .show_ui(ui, |ui| {
-                        dictionaries.iter().for_each(|(handle, dict)| {
-                            ui.selectable_value(
-                                &mut current_dictionary.0,
-                                dictionaries.get_handle(handle),
-                                &dict.name,
-                            );
+    if let GameState::Menu { word, mut dictionary, .. } = state.current().clone() {
+        egui::containers::Window::new("Menu")
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx.ctx(), |ui| {
+                let current_dict_name = &dictionaries.get(dictionary.clone()).unwrap().name;
+                ui.vertical(|ui| {
+                    ui.heading(word.clone());
+                    ComboBox::from_label("Dictionary")
+                        .selected_text(current_dict_name)
+                        .show_ui(ui, |ui| {
+                            dictionaries.iter().for_each(|(handle, dict)| {
+                                ui.selectable_value(
+                                    &mut dictionary,
+                                    dictionaries.get_handle(handle),
+                                    &dict.name,
+                                );
+                            });
                         });
-                    });
 
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::DragValue::new(&mut current_settings.word_length)
-                            .speed(0.2)
-                            .clamp_range(0.0..=16f32)
-                            .fixed_decimals(0)
-                            .prefix("Length: ")
-                            .suffix(" characters"),
-                    );
-                    ui.add(
-                        egui::DragValue::new(&mut current_settings.max_attempts)
-                            .speed(0.2)
-                            .clamp_range(0.0..=12f32)
-                            .fixed_decimals(0)
-                            .prefix("Guesses: "),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::DragValue::new(&mut menu_settings.word_length)
+                                .speed(0.2)
+                                .clamp_range(0.0..=16f32)
+                                .fixed_decimals(0)
+                                .prefix("Length: ")
+                                .suffix(" characters"),
+                        );
+                        ui.add(
+                            egui::DragValue::new(&mut menu_settings.max_attempts)
+                                .speed(0.2)
+                                .clamp_range(0.0..=12f32)
+                                .fixed_decimals(0)
+                                .prefix("Guesses: "),
+                        );
+                    });
+                    if ui.button("Go back").clicked() {
+                        state.pop().ok();
+                    }
+                    if ui.button("Start game").clicked() {
+                        state.replace(GameState::Main{
+                            settings: menu_settings.clone(),
+                            word: word.clone(),
+                            dictionary: dictionary.clone(),
+                        }).ok();
+                    }
                 });
-                if ui.button("Go back").clicked() {
-                    state.pop().ok();
-                }
-                if ui.button("Start game").clicked() {
-                    events.send(GameEvent::ChangeDictionary(current_dictionary.0.clone()));
-                    state.replace(GameState::Main).ok();
-                }
             });
-        });
+        }
 }
 
-fn win_ui_system(ctx: ResMut<EguiContext>, word: Res<CurrentWordResource>, mut events: EventWriter<GameEvent>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>, settings: Res<CurrentSettingsResource>){
+fn win_ui_system(ctx: ResMut<EguiContext>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>){
+    if let GameState::Win { settings, word, dictionary } = state.current().clone() {
     egui::containers::Window::new("Win")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx.ctx(), |ui| {
             ui.label("Win");
-            ui.label(format!("The word was: {}", word.0));
+            ui.label(format!("The word was: {}", word));
             ui.label(history.share_string(&word, &settings));
             
             if ui.button("New game").clicked() {
-                events.send(GameEvent::RandomizeWord);
                 history.clear();
-                state.replace(GameState::Main).ok();
+                state.replace(GameState::Main{ settings: settings.clone(), word: word.clone(), dictionary: dictionary.clone() }).ok();
             }
         });
+    }
 }
-fn loss_ui_system(ctx: ResMut<EguiContext>, word: Res<CurrentWordResource>, mut events: EventWriter<GameEvent>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>){
+fn loss_ui_system(ctx: ResMut<EguiContext>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>, dictionaries: Res<Assets<DictionaryAsset>>){
+    if let GameState::Loss { settings, word, dictionary: dictionary_handle } = state.current().clone() {
+
     egui::containers::Window::new("Loss")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx.ctx(), |ui| {
             ui.label("Loss");
             if ui.button("Retry").clicked() {
                 history.clear();
-                state.replace(GameState::Main).ok();
+                state.replace(GameState::Main{ settings: settings.clone(), word: word.clone(), dictionary: dictionary_handle.clone() }).ok();
             }
             if ui.button("New game").clicked() {
-                events.send(GameEvent::RandomizeWord);
                 history.clear();
-                state.replace(GameState::Main).ok();
+                if let Some(dictionary) = dictionaries.get(dictionary_handle.clone()) {
+                    if let Some(new_word) = dictionary.random(settings.word_length) {                    
+                        state.replace(GameState::Main{ settings: settings.clone(), word: new_word.to_string(), dictionary: dictionary_handle.clone() }).ok();
+                }
+                }
             }
         });
+    }
 }
 
 pub struct WordBlockWidget<'a> {
