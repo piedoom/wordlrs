@@ -11,7 +11,7 @@ use bevy_egui::{
     egui::{
         self,
         epaint::{RectShape, TextStyle},
-        Color32, ComboBox, Sense, Widget,
+        Color32, ComboBox, Sense, Widget, util::History,
     },
     EguiContext,
 };
@@ -125,6 +125,7 @@ impl Default for MenuSettingsResource {
 pub fn menu_ui_system(
     mut menu_settings: ResMut<MenuSettingsResource>,
     mut state: ResMut<State<GameState>>,
+    mut history: ResMut<HistoryResource>,
     ctx: ResMut<EguiContext>,
     dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
@@ -170,7 +171,7 @@ pub fn menu_ui_system(
                         pop_state = true;
                     }
                     if ui.button("Start game").clicked() {
-                        dbg!(&menu_settings);
+                        history.clear();
                         let new_word = dictionaries.get(menu_settings.selected_dictonary_handle.clone()).unwrap().random(menu_settings.word_length).unwrap();
                         next_state = Some(GameState::Main(GameOptions{
                             settings: Settings{ word_length: menu_settings.word_length, max_attempts: menu_settings.max_attempts } ,
