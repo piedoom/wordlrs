@@ -57,7 +57,7 @@ impl DictionaryAsset {
     pub fn random(&self, length: usize) -> Option<&String> {
         self.words
             .iter()
-            .filter(|x| x.len() == length)
+            .filter(|x| x.chars().count() == length)
             .choose(&mut thread_rng())
     }
 }
@@ -94,11 +94,11 @@ fn check_loaded_system(
         {
             // if dictionary is loaded, set the state to main
             state
-                .replace(GameState::Main {
+                .replace(GameState::Main(GameOptions {
                     word: word.unwrap().to_string(),
                     dictionary,
                     settings: Default::default(),
-                })
+                }))
                 .ok();
         }
     }

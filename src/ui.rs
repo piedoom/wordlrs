@@ -20,7 +20,7 @@ pub struct UiPlugin;
 
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MenuSettings>()
+        app.init_resource::<MenuSettingsResource>()
             .add_system_set(SystemSet::on_update(GameState::main()).with_system(main_ui_system))
             .add_system_set(SystemSet::on_update(GameState::menu()).with_system(menu_ui_system))
             .add_system_set(SystemSet::on_update(GameState::win()).with_system(win_ui_system))
@@ -39,7 +39,8 @@ pub fn main_ui_system(
     history: Res<HistoryResource>,
     dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
-    if let GameState::Main { word, dictionary, settings } = state.current().clone() {
+    let mut next_state = None;
+    if let GameState::Main (GameOptions{ word, dictionary, .. }) = state.current() {
         egui::containers::Area::new("info")
             .anchor(egui::Align2::CENTER_TOP, egui::Vec2::new(0f32, 32f32))
             .show(ctx.ctx(), |ui| {
@@ -69,7 +70,7 @@ pub fn main_ui_system(
             .anchor(egui::Align2::LEFT_TOP, egui::Vec2::ZERO)
             .show(ctx.ctx(), |ui| {
                 if ui.button("Settings").clicked() {
-                    state.push(GameState::Menu{ settings, word, dictionary: dictionary.clone() }).ok();
+                    next_state = Some(GameState::Menu { prev_dictionary: dictionary.clone(), prev_word: word.clone() });
                 }
             });
 
@@ -102,30 +103,46 @@ pub fn main_ui_system(
                 
             });
     }
+    if let Some(next_state) = next_state {
+        state.push(next_state).ok();
+    }
 }
 
-pub type MenuSettings = Settings;
+#[derive(Debug)]
+pub struct MenuSettingsResource {
+    pub word_length: usize,
+    pub max_attempts: usize,
+    pub selected_dictonary_handle: Handle<DictionaryAsset>,
+}
+
+impl Default for MenuSettingsResource {
+    fn default() -> Self {
+        Self { word_length: 5, max_attempts: 5, selected_dictonary_handle: Default::default() }
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn menu_ui_system(
-    mut menu_settings: ResMut<MenuSettings>,
+    mut menu_settings: ResMut<MenuSettingsResource>,
     mut state: ResMut<State<GameState>>,
     ctx: ResMut<EguiContext>,
     dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
-    if let GameState::Menu { word, mut dictionary, .. } = state.current().clone() {
+    let mut pop_state = false;
+    let mut next_state = None;
+    if let GameState::Menu{prev_dictionary, prev_word} = state.current() {
         egui::containers::Window::new("Menu")
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx.ctx(), |ui| {
-                let current_dict_name = &dictionaries.get(dictionary.clone()).unwrap().name;
+                let initial_dict_name = &dictionaries.get(prev_dictionary.clone()).unwrap().name;
                 ui.vertical(|ui| {
-                    ui.heading(word.clone());
+                    ui.heading(prev_word.clone());
                     ComboBox::from_label("Dictionary")
-                        .selected_text(current_dict_name)
+                        .selected_text(initial_dict_name)
                         .show_ui(ui, |ui| {
                             dictionaries.iter().for_each(|(handle, dict)| {
                                 ui.selectable_value(
-                                    &mut dictionary,
+                                    &mut menu_settings.selected_dictonary_handle,
                                     dictionaries.get_handle(handle),
                                     &dict.name,
                                 );
@@ -136,7 +153,7 @@ pub fn menu_ui_system(
                         ui.add(
                             egui::DragValue::new(&mut menu_settings.word_length)
                                 .speed(0.2)
-                                .clamp_range(0.0..=16f32)
+                                .clamp_range(2.0..=16f32)
                                 .fixed_decimals(0)
                                 .prefix("Length: ")
                                 .suffix(" characters"),
@@ -144,44 +161,59 @@ pub fn menu_ui_system(
                         ui.add(
                             egui::DragValue::new(&mut menu_settings.max_attempts)
                                 .speed(0.2)
-                                .clamp_range(0.0..=12f32)
+                                .clamp_range(2.0..=12f32)
                                 .fixed_decimals(0)
                                 .prefix("Guesses: "),
                         );
                     });
                     if ui.button("Go back").clicked() {
-                        state.pop().ok();
+                        pop_state = true;
                     }
                     if ui.button("Start game").clicked() {
-                        state.replace(GameState::Main{
-                            settings: menu_settings.clone(),
-                            word: word.clone(),
-                            dictionary: dictionary.clone(),
-                        }).ok();
+                        dbg!(&menu_settings);
+                        let new_word = dictionaries.get(menu_settings.selected_dictonary_handle.clone()).unwrap().random(menu_settings.word_length).unwrap();
+                        next_state = Some(GameState::Main(GameOptions{
+                            settings: Settings{ word_length: menu_settings.word_length, max_attempts: menu_settings.max_attempts } ,
+                            word: new_word.to_string(),
+                            dictionary: menu_settings.selected_dictonary_handle.clone(),
+                        }));
                     }
                 });
             });
         }
+        if pop_state {
+            state.pop().ok();
+        }
+        if let Some(next_state) = next_state {
+            state.replace(next_state).ok();
+        }
 }
 
-fn win_ui_system(ctx: ResMut<EguiContext>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>){
-    if let GameState::Win { settings, word, dictionary } = state.current().clone() {
+fn win_ui_system(ctx: ResMut<EguiContext>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>, dictionaries: Res<Assets<DictionaryAsset>>){
+    let mut next_state = None;
+    if let GameState::Win(GameOptions{ settings, word, dictionary }) = state.current() {
     egui::containers::Window::new("Win")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx.ctx(), |ui| {
             ui.label("Win");
             ui.label(format!("The word was: {}", word));
-            ui.label(history.share_string(&word, &settings));
+            ui.label(history.share_string(word, settings));
             
             if ui.button("New game").clicked() {
                 history.clear();
-                state.replace(GameState::Main{ settings: settings.clone(), word: word.clone(), dictionary: dictionary.clone() }).ok();
+                let new_word = dictionaries.get(dictionary.clone()).unwrap().random(settings.word_length).unwrap();
+                next_state = Some(GameState::Main(GameOptions{ settings: settings.clone(), word: new_word.to_string(), dictionary: dictionary.clone() }));
             }
         });
     }
+    if let Some(next_state) = next_state {
+        state.replace(next_state).ok();
+    }
 }
 fn loss_ui_system(ctx: ResMut<EguiContext>, mut history: ResMut<HistoryResource>, mut state: ResMut<State<GameState>>, dictionaries: Res<Assets<DictionaryAsset>>){
-    if let GameState::Loss { settings, word, dictionary: dictionary_handle } = state.current().clone() {
+    
+    let mut next_state = None;
+    if let GameState::Loss(GameOptions{ settings, word, dictionary: dictionary_handle }) = state.current() {
 
     egui::containers::Window::new("Loss")
         .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -189,17 +221,21 @@ fn loss_ui_system(ctx: ResMut<EguiContext>, mut history: ResMut<HistoryResource>
             ui.label("Loss");
             if ui.button("Retry").clicked() {
                 history.clear();
-                state.replace(GameState::Main{ settings: settings.clone(), word: word.clone(), dictionary: dictionary_handle.clone() }).ok();
+                next_state = Some(GameState::Main(GameOptions{ settings: settings.clone(), word: word.clone(), dictionary: dictionary_handle.clone() }));
             }
             if ui.button("New game").clicked() {
                 history.clear();
                 if let Some(dictionary) = dictionaries.get(dictionary_handle.clone()) {
                     if let Some(new_word) = dictionary.random(settings.word_length) {                    
-                        state.replace(GameState::Main{ settings: settings.clone(), word: new_word.to_string(), dictionary: dictionary_handle.clone() }).ok();
+                      next_state = Some(GameState::Main(GameOptions{ settings: settings.clone(), word: new_word.to_string(), dictionary: dictionary_handle.clone() }));
                 }
                 }
             }
         });
+    }
+
+    if let Some(next_state) = next_state {
+        state.replace(next_state).ok();
     }
 }
 

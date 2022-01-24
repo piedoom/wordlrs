@@ -42,26 +42,13 @@ impl Plugin for GamePlugin {
 #[derive(Debug, Clone, Eq, Hash)]
 pub enum GameState {
     Load,
-    Main {
-        settings: Settings,
-        word: String,
-        dictionary: Handle<DictionaryAsset>,
-    },
+    Main(GameOptions),
     Menu {
-        settings: Settings,
-        word: String,
-        dictionary: Handle<DictionaryAsset>,
+        prev_dictionary: Handle<DictionaryAsset>,
+        prev_word: String,
     },
-    Win {
-        settings: Settings,
-        word: String,
-        dictionary: Handle<DictionaryAsset>,
-    },
-    Loss {
-        settings: Settings,
-        word: String,
-        dictionary: Handle<DictionaryAsset>,
-    },
+    Win(GameOptions),
+    Loss(GameOptions),
 }
 
 impl PartialEq for GameState {
@@ -72,6 +59,13 @@ impl PartialEq for GameState {
     }
 }
 
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct GameOptions {
+    pub settings: Settings,
+    pub word: String,
+    pub dictionary: Handle<DictionaryAsset>,
+}
+
 impl GameState {
     #[inline(always)]
     pub fn load() -> Self {
@@ -80,38 +74,25 @@ impl GameState {
 
     #[inline(always)]
     pub fn main() -> Self {
-        Self::Main {
-            settings: Default::default(),
-            word: Default::default(),
-            dictionary: Default::default(),
-        }
+        Self::Main(GameOptions::default())
     }
 
     #[inline(always)]
     pub fn menu() -> Self {
         Self::Menu {
-            settings: Default::default(),
-            word: Default::default(),
-            dictionary: Default::default(),
+            prev_dictionary: Default::default(),
+            prev_word: Default::default(),
         }
     }
 
     #[inline(always)]
     pub fn win() -> Self {
-        Self::Win {
-            settings: Default::default(),
-            word: Default::default(),
-            dictionary: Default::default(),
-        }
+        Self::Win(GameOptions::default())
     }
 
     #[inline(always)]
     pub fn loss() -> Self {
-        Self::Loss {
-            settings: Default::default(),
-            word: Default::default(),
-            dictionary: Default::default(),
-        }
+        Self::Loss(GameOptions::default())
     }
 }
 
@@ -288,7 +269,7 @@ fn capture_input_system(
     mut events: EventWriter<GameEvent>,
     state: Res<State<GameState>>,
 ) {
-    if let GameState::Main { word, .. } = state.current() {
+    if let GameState::Main(GameOptions { word, .. }) = state.current() {
         for event in keyboard_events.iter() {
             println!("{}", event.char);
             // add typed letters
@@ -323,30 +304,26 @@ fn process_game_events_system(
     current_settings: Res<Settings>,
     dictionaries: Res<Assets<DictionaryAsset>>,
 ) {
-    if let GameState::Main {
-        settings,
-        word,
-        dictionary,
-    } = state.current().clone()
-    {
+    let mut next_state = None;
+    if let GameState::Main(game_options) = state.current() {
         events.iter().for_each(|event| match event {
             GameEvent::Guess(guess) => {
                 // build a guess and add it to the history (if valid)
                 // Proceed if guess is correct length
-                if guess.chars().count() == word.chars().count() {
+                if guess.chars().count() == game_options.word.chars().count() {
                     // proceed if guess is in dictionary
                     if dictionaries
-                        .get(dictionary.clone())
+                        .get(game_options.dictionary.clone())
                         .unwrap()
                         .contains(guess)
                     {
                         // Clone the word and use it as a way to keep track of letters
-                        let mut letters: Vec<char> = word.clone().chars().collect();
+                        let mut letters: Vec<char> = game_options.word.clone().chars().collect();
 
                         // loop over guess for comparison to find correct ones
                         let guess: Vec<(char, GuessState)> = guess
                             .chars()
-                            .zip(word.chars())
+                            .zip(game_options.word.chars())
                             .enumerate()
                             .map(|(i, (guess_char, word_char))| {
                                 if guess_char == word_char {
@@ -391,23 +368,11 @@ fn process_game_events_system(
                         if let Some(guess) = guesses.last() {
                             // check if correct
                             if guess.correct() {
-                                state
-                                    .push(GameState::Win {
-                                        settings: settings.clone(),
-                                        word: word.clone(),
-                                        dictionary: dictionary.clone(),
-                                    })
-                                    .ok();
+                                next_state = Some(GameState::Win(game_options.clone()));
                             } else {
                                 // check if loss
                                 if guesses.len() >= current_settings.max_attempts {
-                                    state
-                                        .push(GameState::Loss {
-                                            settings: settings.clone(),
-                                            word: word.clone(),
-                                            dictionary: dictionary.clone(),
-                                        })
-                                        .ok();
+                                    next_state = Some(GameState::Loss(game_options.clone()));
                                 }
                             }
                         }
@@ -415,6 +380,9 @@ fn process_game_events_system(
                 }
             }
         });
+    }
+    if let Some(next_state) = next_state {
+        state.push(next_state).ok();
     }
 }
 
