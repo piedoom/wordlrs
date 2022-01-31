@@ -9,7 +9,7 @@ use std::{
 use bevy::{prelude::*, utils::HashMap};
 use bevy_egui::egui::Color32;
 use prelude::{
-    assets::{AssetPlugin, DictionaryAsset, KeyboardLayoutAsset},
+    assets::{AssetPlugin, DictionaryAsset, KeyboardLayoutAsset, Language},
     ui::colors::*,
 };
 
@@ -43,10 +43,7 @@ impl Plugin for GamePlugin {
 pub enum GameState {
     Load,
     Main(GameOptions),
-    Menu {
-        prev_dictionary: Handle<DictionaryAsset>,
-        prev_word: String,
-    },
+    Menu(GameOptions),
     Win(GameOptions),
     Loss(GameOptions),
 }
@@ -63,7 +60,7 @@ impl PartialEq for GameState {
 pub struct GameOptions {
     pub settings: Settings,
     pub word: String,
-    pub dictionary: Handle<DictionaryAsset>,
+    pub language: Language,
 }
 
 impl GameState {
@@ -79,10 +76,7 @@ impl GameState {
 
     #[inline(always)]
     pub fn menu() -> Self {
-        Self::Menu {
-            prev_dictionary: Default::default(),
-            prev_word: Default::default(),
-        }
+        Self::Menu(GameOptions::default())
     }
 
     #[inline(always)]
@@ -271,7 +265,6 @@ fn capture_input_system(
 ) {
     if let GameState::Main(GameOptions { word, .. }) = state.current() {
         for event in keyboard_events.iter() {
-            println!("{}", event.char);
             // add typed letters
             if event.char.is_alphabetic() {
                 current.push(event.char, word.chars().count());
@@ -312,11 +305,7 @@ fn process_game_events_system(
                 // Proceed if guess is correct length
                 if guess.chars().count() == game_options.word.chars().count() {
                     // proceed if guess is in dictionary
-                    if dictionaries
-                        .get(game_options.dictionary.clone())
-                        .unwrap()
-                        .contains(guess)
-                    {
+                    if game_options.language.is_in_dictionary(&dictionaries, guess) {
                         // Clone the word and use it as a way to keep track of letters
                         let mut letters: Vec<char> = game_options.word.clone().chars().collect();
 

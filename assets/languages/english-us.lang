@@ -1,0 +1,5 @@
+(
+    name: "english-us",
+    keyboards: ["qwerty"],
+    wordlists: ["english-us-classic"],
+)
