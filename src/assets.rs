@@ -146,18 +146,18 @@ fn check_loaded_system(
         );
 
         // get english language as default
-        let english = languages.iter().find(|x| x.name == "english-us").unwrap();
-
-        // Set the state to main with some default settings
-        state
-            .replace(GameState::Main(GameOptions {
-                word: english.get_random_word(&wordlists, 5),
-                language: english.clone(),
-                settings: Settings {
-                    ..Default::default()
-                },
-            }))
-            .ok();
+        if let Some(english) = languages.iter().find(|x| x.name == "english-us") {
+            // Set the state to main with some default settings
+            state
+                .replace(GameState::Main(GameOptions {
+                    word: english.get_random_word(&wordlists, 5),
+                    language: english.clone(),
+                    settings: Settings {
+                        ..Default::default()
+                    },
+                }))
+                .ok();
+        }
     }
 }
 
